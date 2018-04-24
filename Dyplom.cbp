@@ -13,14 +13,14 @@
 				<Option compiler="gcc" />
 				<Compiler>
 					<Add option="-g" />
-					<Add directory="C:/Users/Grzegorz/Desktop/Programy/opencv/opencvbuildcodeblocks/install/include" />
+					<Add directory="../opencv/opencvbuildcodeblocks/install/include" />
 				</Compiler>
 				<Linker>
 					<Add library="../opencv/opencvbuildcodeblocks/lib/libopencv_core341.dll.a" />
 					<Add library="../opencv/opencvbuildcodeblocks/lib/libopencv_highgui341.dll.a" />
 					<Add library="../opencv/opencvbuildcodeblocks/lib/libopencv_imgcodecs341.dll.a" />
 					<Add library="../opencv/opencvbuildcodeblocks/lib/libopencv_imgproc341.dll.a" />
-					<Add directory="C:/Users/Grzegorz/Desktop/Programy/opencv/opencvbuildcodeblocks/lib" />
+					<Add directory="../opencv/opencvbuildcodeblocks/lib" />
 				</Linker>
 			</Target>
 			<Target title="Release">

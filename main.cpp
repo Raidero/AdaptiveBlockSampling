@@ -4,70 +4,114 @@
 #include <opencv2/imgproc/imgproc.hpp>
 #include <list>
 #include <iostream>
-#define MAX_UCHAR 255
+
 using namespace cv;
 
-void compressImage(Mat& source_laplace, Mat& source, std::list<uchar>& output, uchar blockSize);
-void blockQuantisation(Mat& roi, Mat& source_roi, std::list<uchar>& compressed);
-uchar getMaxColorValue(Mat& roi);
-void decompressImage(std::list<uchar>& compressedImage, Mat& decompressedImage);
-void blockDequantisation(Mat& roi, std::list<uchar>& compressedImage);
+void compress(Mat_<double>& input, Mat_<double>& output, short blockSize);
+void compressBlock(Mat_<double>& input, Mat_<double>& output, short blockSize, int iblock, int jblock);
+
 int main( int argc, char** argv )
 {
-  Mat src, src_gray, dst;
-  int kernel_size = 3;
-  int scale = 1;
-  int delta = 0;
-  int ddepth = CV_16S;
-  char* window_name = "Laplace Demo";
+    Mat src, src_gray;
+    std::string window_name = "Rip";
 
-  /// Load an image
-  src = imread( "test.png" );
+    src = imread( "test3.png" );
+    Mat_<double> src_double;
+    cvtColor( src, src_gray, CV_BGR2GRAY );
+    src_gray.convertTo(src_double, CV_64FC1);
+    if( !src.data )
+        return -1;
 
-  if( !src.data )
-    { return -1; }
+    Mat_<double> compressed = src_double.clone();
 
-  /// Remove noise by blurring with a Gaussian filter
-  GaussianBlur( src, src, Size(3,3), 0, 0, BORDER_DEFAULT );
+    compress(src_double, compressed, 8);
+    namedWindow( window_name, CV_WINDOW_AUTOSIZE );
+    imshow( window_name, compressed );
+    imwrite("compressed.bmp", compressed);
 
-  /// Convert the image to grayscale
-  cvtColor( src, src_gray, CV_BGR2GRAY );
+    waitKey(0);
 
-  /// Create window
-  namedWindow( window_name, CV_WINDOW_AUTOSIZE );
-
-  /// Apply Laplace function
-  Mat abs_dst;
-
-  Laplacian( src_gray, dst, ddepth, kernel_size, scale, delta, BORDER_DEFAULT );
-  convertScaleAbs( dst, abs_dst );
-
-
-  //uchar* pointer;
-  /*for(int i = 0; i < src.rows; ++i)
-  {
-    pointer = abs_dst.ptr<uchar>(i);
-    for(int j = 200; j < src.cols; ++j)
-    {
-        pointer[j] = 40;
-    }
-  }*/
-  std::list<uchar> new_image;
-  compressImage(abs_dst, src_gray, new_image, 32);
-  Mat last_image;
-  decompressImage(new_image, last_image);
-  /// Show what you got
-  imshow( window_name, last_image );
-  imwrite("compressed.png", last_image);
-
-  waitKey(0);
-  imshow( window_name, src_gray );
-  imwrite("gray.png", src_gray);
-  waitKey(0);
-  return 0;
+    return 0;
 }
 
-void compressImage(Mat& source_laplace, Mat& source, std::list<uchar>& compressedImage, uchar blockSize)
+void compress(Mat_<double>& input, Mat_<double>& output, short blockSize)
+{
+    for(int i = 0; i < input.rows; i += blockSize)
+    {
+        for(int j = 0; j < input.cols; j += blockSize)
+        {
+            Mat_<double> block = input(Rect2d(j, i, blockSize, blockSize));
+            compressBlock(block, output, blockSize, i, j);
+        }
+    }
+}
+
+void compressBlock(Mat_<double>& input, Mat_<double>& output, short blockSize, int iblock, int jblock)
+{
+    static Mat_<double> haar = (Mat_<double>(8,8) << 1, 1, 1, 1, 1, 1, 1, 1,
+                                    1, 1, 1, 1, -1, -1, -1, -1,
+                                    2, 2, -2, -2, 0, 0, 0, 0,
+                                    0, 0, 0, 0, 2, 2, -2, -2,
+                                    4, -4, 0, 0, 0, 0, 0, 0,
+                                    0, 0, 4, -4, 0, 0, 0, 0,
+                                    0, 0, 0, 0, 4, -4, 0, 0,
+                                    0, 0, 0, 0, 0, 0, 4, -4) / 64.0;
+    int rows = output.rows;
+    int cols = output.cols;
+    Mat result = haar * input * haar.t();
+    for(int i = 0; i < blockSize; ++i)
+    {
+        for(int j = 0; j < blockSize; ++j)
+        {
+            int k = 0, l = 0;
+            while(i >> k > 0)
+            {
+                k++;
+            }
+            while(j >> l > 0)
+            {
+                l++;
+            }
+            int indexi = 0, indexj = 0;
+            if(k == l || (k <= 1 && l <= 1))
+            {
+                if(k > 0)
+                {
+                    indexi = ((rows/blockSize)<<(k-1)) + i - (1<<(k-1));
+                    indexi += ((iblock/blockSize)<<(k-1));
+                }
+                else
+                    indexi = iblock/blockSize;
+                if(l > 0)
+                {
+                    indexj = ((cols/blockSize)<<(l-1)) + j - (1<<(l-1));
+                    indexj += ((jblock/blockSize)<<(l-1));
+                }
+                else
+                    indexj = jblock/blockSize;
+            }
+            else if(k > l)
+            {
+                indexi = ((rows/blockSize)<<(k-1)) + i - (1<<(k-1));
+                indexi += ((iblock/blockSize)<<(k-1));
+
+                indexj = j + ((jblock/blockSize)<<(k-1));
+            }
+            else if(k < l)
+            {
+
+                indexi = i + ((iblock/blockSize)<<(l-1));
+
+                indexj = ((cols/blockSize)<<(l-1)) + j - (1<<(l-1));
+                indexj += ((jblock/blockSize)<<(l-1));
+            }
+            double* resultrow = result.ptr<double>(i);
+            double* outputrow = output.ptr<double>(indexi);
+            outputrow[indexj] = resultrow[j];
+        }
+    }
+}
+/*void compressImage(Mat& source_laplace, Mat& source, std::list<uchar>& compressedImage, uchar blockSize)
 {
     //compressedImage.push_back(source_laplace.rows);
     //compressedImage.push_back(source_laplace.cols);
@@ -175,4 +219,4 @@ void blockDequantisation(Mat& roi, std::list<uchar>& compressedImage)
             compressedImage.pop_front();
         }
     }
-}
+}*/
