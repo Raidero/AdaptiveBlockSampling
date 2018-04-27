@@ -4,11 +4,13 @@
 #include <opencv2/imgproc/imgproc.hpp>
 #include <list>
 #include <iostream>
-
+#include <math.h>
 using namespace cv;
 
 void compress(Mat_<double>& input, Mat_<double>& output, short blockSize);
 void compressBlock(Mat_<double>& input, Mat_<double>& output, short blockSize, int iblock, int jblock);
+void decompress(Mat_<double>& input, Mat_<double>& output, short blockSize);
+void decompressBlock(Mat_<double>& input, Mat_<double>& output, short blockSize, int iblock, int jblock);
 
 int main( int argc, char** argv )
 {
@@ -23,11 +25,25 @@ int main( int argc, char** argv )
         return -1;
 
     Mat_<double> compressed = src_double.clone();
-
-    compress(src_double, compressed, 8);
     namedWindow( window_name, CV_WINDOW_AUTOSIZE );
-    imshow( window_name, compressed );
-    imwrite("compressed.bmp", compressed);
+
+
+    compress(src_double, compressed, 4);
+    /*double min, max;
+    cv::minMaxLoc(compressed, &min, &max);
+    compressed -= min;
+    compressed /= (max - min);
+    compressed *= 256;*/
+    compressed.convertTo(src_gray, CV_8UC1);
+    imwrite("compressed.png", src_gray);
+    imshow(window_name, src_gray);
+    waitKey();
+
+
+    decompress(compressed, src_double, 4);
+    src_double.convertTo(src_gray, CV_8UC1);
+    imshow( window_name, src_gray );
+    imwrite("decompressed.png", src_gray);
 
     waitKey(0);
 
@@ -46,19 +62,26 @@ void compress(Mat_<double>& input, Mat_<double>& output, short blockSize)
     }
 }
 
+
+
 void compressBlock(Mat_<double>& input, Mat_<double>& output, short blockSize, int iblock, int jblock)
 {
-    static Mat_<double> haar = (Mat_<double>(8,8) << 1, 1, 1, 1, 1, 1, 1, 1,
+    static Mat_<double> haar8 = (Mat_<double>(8,8) << 1, 1, 1, 1, 1, 1, 1, 1,
                                     1, 1, 1, 1, -1, -1, -1, -1,
                                     2, 2, -2, -2, 0, 0, 0, 0,
                                     0, 0, 0, 0, 2, 2, -2, -2,
                                     4, -4, 0, 0, 0, 0, 0, 0,
                                     0, 0, 4, -4, 0, 0, 0, 0,
                                     0, 0, 0, 0, 4, -4, 0, 0,
-                                    0, 0, 0, 0, 0, 0, 4, -4) / 64.0;
+                                    0, 0, 0, 0, 0, 0, 4, -4) / 8.0;
+    static Mat_<double> haar4 = (Mat_<double>(4,4) << 1, 1, 1, 1,
+                                                    1, 1, -1, -1,
+                                                    sqrt(2), -sqrt(2), 0, 0,
+                                                    0, 0, sqrt(2), -sqrt(2)) * 0.5;
+
     int rows = output.rows;
     int cols = output.cols;
-    Mat result = haar * input * haar.t();
+    Mat result = haar4 * input * haar4.t();
     for(int i = 0; i < blockSize; ++i)
     {
         for(int j = 0; j < blockSize; ++j)
@@ -110,6 +133,88 @@ void compressBlock(Mat_<double>& input, Mat_<double>& output, short blockSize, i
             outputrow[indexj] = resultrow[j];
         }
     }
+}
+
+void decompress(Mat_<double>& compressed, Mat_<double>& decompressed, short blockSize)
+{
+    for(int i = 0; i < compressed.rows; i += blockSize)
+    {
+        for(int j = 0; j < compressed.cols; j += blockSize)
+        {
+            Mat_<double> block = decompressed(Rect2d(j, i, blockSize, blockSize));
+            decompressBlock(block, compressed, blockSize, i, j);
+        }
+    }
+}
+
+void decompressBlock(Mat_<double>& decompressedBlock, Mat_<double>& compressed, short blockSize, int iblock, int jblock)
+{
+    static Mat_<double> haar8 = (Mat_<double>(8,8) << 1, 1, 1, 1, 1, 1, 1, 1,
+                                    1, 1, 1, 1, -1, -1, -1, -1,
+                                    2, 2, -2, -2, 0, 0, 0, 0,
+                                    0, 0, 0, 0, 2, 2, -2, -2,
+                                    4, -4, 0, 0, 0, 0, 0, 0,
+                                    0, 0, 4, -4, 0, 0, 0, 0,
+                                    0, 0, 0, 0, 4, -4, 0, 0,
+                                    0, 0, 0, 0, 0, 0, 4, -4) / 8.0;
+    static Mat_<double> haar4 = (Mat_<double>(4,4) << 1, 1, 1, 1,
+                                                    1, 1, -1, -1,
+                                                    sqrt(2), -sqrt(2), 0, 0,
+                                                    0, 0, sqrt(2), -sqrt(2)) * 0.5;
+    int rows = compressed.rows;
+    int cols = compressed.cols;
+    for(int i = 0; i < blockSize; ++i)
+    {
+        for(int j = 0; j < blockSize; ++j)
+        {
+            int k = 0, l = 0;
+            while(i >> k > 0)
+            {
+                k++;
+            }
+            while(j >> l > 0)
+            {
+                l++;
+            }
+            int indexi = 0, indexj = 0;
+            if(k == l || (k <= 1 && l <= 1))
+            {
+                if(k > 0)
+                {
+                    indexi = ((rows/blockSize)<<(k-1)) + i - (1<<(k-1));
+                    indexi += ((iblock/blockSize)<<(k-1));
+                }
+                else
+                    indexi = iblock/blockSize;
+                if(l > 0)
+                {
+                    indexj = ((cols/blockSize)<<(l-1)) + j - (1<<(l-1));
+                    indexj += ((jblock/blockSize)<<(l-1));
+                }
+                else
+                    indexj = jblock/blockSize;
+            }
+            else if(k > l)
+            {
+                indexi = ((rows/blockSize)<<(k-1)) + i - (1<<(k-1));
+                indexi += ((iblock/blockSize)<<(k-1));
+
+                indexj = j + ((jblock/blockSize)<<(k-1));
+            }
+            else if(k < l)
+            {
+
+                indexi = i + ((iblock/blockSize)<<(l-1));
+
+                indexj = ((cols/blockSize)<<(l-1)) + j - (1<<(l-1));
+                indexj += ((jblock/blockSize)<<(l-1));
+            }
+            double* compressedRow = compressed.ptr<double>(indexi);
+            double* decompressedBlockRow = decompressedBlock.ptr<double>(i);
+            decompressedBlockRow[j] = compressedRow[indexj];
+        }
+    }
+    decompressedBlock = haar4.t() * decompressedBlock * haar4;
 }
 /*void compressImage(Mat& source_laplace, Mat& source, std::list<uchar>& compressedImage, uchar blockSize)
 {

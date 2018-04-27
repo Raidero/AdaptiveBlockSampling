@@ -795,13 +795,14 @@
 1523224649 c:\users\grzegorz\desktop\programy\opencv\opencvbuildcodeblocks\install\include\opencv2\imgproc\imgproc.hpp
 	"opencv2/imgproc.hpp"
 
-1524610844 source:d:\programy\dyplom\main.cpp
+1524823039 source:d:\programy\dyplom\main.cpp
 	<iostream>
 	<opencv2/core/core.hpp>
 	<opencv2/highgui/highgui.hpp>
 	<opencv2/imgproc/imgproc.hpp>
 	<list>
 	<iostream>
+	<math.h>
 
 1523224644 d:\programy\opencv\opencvbuildcodeblocks\install\include\opencv2\core\core.hpp
 	"opencv2/core.hpp"
