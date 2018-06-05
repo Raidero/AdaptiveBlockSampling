@@ -5,6 +5,10 @@
 #include <list>
 #include <iostream>
 #include <math.h>
+#include <vector>
+#include <stdio.h>
+#include <stdlib.h>
+
 using namespace cv;
 
 void compress(Mat_<double>& input, Mat_<double>& output, short blockSize);
@@ -12,21 +16,73 @@ void compressBlock(Mat_<double>& input, Mat_<double>& output, short blockSize, i
 void decompress(Mat_<double>& input, Mat_<double>& output, short blockSize);
 void decompressBlock(Mat_<double>& input, Mat_<double>& output, short blockSize, int iblock, int jblock);
 
+void fwt97(double* x,int n);
+void iwt97(double* x,int n);
+
 int main( int argc, char** argv )
 {
-    Mat src, src_gray;
+    Mat src, src_gray, src_show;
+    int LEVEL;
+    if(argc > 1)
+        LEVEL = atoi(argv[1]);
+    else
+        LEVEL = 2;
+    std::vector<Mat> channels(3);
     std::string window_name = "Rip";
-
-    src = imread( "test3.png" );
-    Mat_<double> src_double;
-    cvtColor( src, src_gray, CV_BGR2GRAY );
-    src_gray.convertTo(src_double, CV_64FC1);
+    src = imread("test3.png", IMREAD_COLOR);
     if( !src.data )
         return -1;
-
-    Mat_<double> compressed = src_double.clone();
+    Mat_<double> compressed, src_double;
+    cvtColor( src, src_gray, CV_BGR2GRAY );
+    src_gray.convertTo(src_double, CV_64FC1);
     namedWindow( window_name, CV_WINDOW_AUTOSIZE );
+    compressed = src_double.clone();
+    //split(src, channels);
+    //for(int color = 0; color < 3; ++color)
+    //{
+    //    channels[color].convertTo(compressed, CV_64FC1);
+        for(int level = 0; level < LEVEL; ++level)
+        {
+            Mat roi = compressed(cv::Rect2d(0, 0, compressed.cols>>level, compressed.rows>>level));
+            for(int i = 0; i < roi.rows; ++i)
+                fwt97(roi.ptr<double>(i), roi.cols);
+            cv::rotate(roi, roi, ROTATE_90_COUNTERCLOCKWISE);
+            for(int i = 0; i < roi.rows; ++i)
+                fwt97(roi.ptr<double>(i), roi.cols);
+            cv::rotate(roi, roi, ROTATE_90_CLOCKWISE);
+        }
+    //    compressed.convertTo(channels[color], CV_8UC1);
+        //imshow(window_name, channels[color]);
+        //waitKey();
+    //}
+    //merge(channels, src_show);
+    compressed.convertTo(src_gray, CV_8UC1);
+    imshow(window_name, src_gray);
+    waitKey();
 
+    //split(src_show, channels);
+    //for(int color = 0; color < 3; ++color)
+    //{
+    //    channels[color].convertTo(compressed, CV_64FC1);
+        for(int level = LEVEL - 1; level >= 0; --level)
+        {
+            Mat roi = compressed(cv::Rect2d(0, 0, compressed.cols>>level, compressed.rows>>level));
+            cv::rotate(roi, roi, ROTATE_90_COUNTERCLOCKWISE);
+            for(int i = 0; i < roi.rows; ++i)
+                iwt97(roi.ptr<double>(i), roi.cols);
+            cv::rotate(roi, roi, ROTATE_90_CLOCKWISE);
+            for(int i = 0; i < roi.rows; ++i)
+                iwt97(roi.ptr<double>(i), roi.cols);
+        }
+    //    compressed2.convertTo(channels[color], CV_8UC1);
+        //imshow(window_name, channels[color]);
+        //waitKey();
+    //}
+
+    //merge(channels, src_show);
+    compressed.convertTo(src_gray, CV_8UC1);
+    imshow(window_name, src_gray);
+    waitKey();
 
     compress(src_double, compressed, 4);
     /*double min, max;
@@ -48,6 +104,110 @@ int main( int argc, char** argv )
     waitKey(0);
 
     return 0;
+}
+
+
+double *tempbank=0;
+
+void fwt97(double* x,int n) {
+  double a;
+  int i;
+
+  // Predict 1
+  a=-1.586134342;
+  for (i=1;i<n-2;i+=2) {
+    x[i]+=a*(x[i-1]+x[i+1]);
+  }
+  x[n-1]+=2*a*x[n-2];
+
+  // Update 1
+  a=-0.05298011854;
+  for (i=2;i<n;i+=2) {
+    x[i]+=a*(x[i-1]+x[i+1]);
+  }
+  x[0]+=2*a*x[1];
+
+  // Predict 2
+  a=0.8829110762;
+  for (i=1;i<n-2;i+=2) {
+    x[i]+=a*(x[i-1]+x[i+1]);
+  }
+  x[n-1]+=2*a*x[n-2];
+
+  // Update 2
+  a=0.4435068522;
+  for (i=2;i<n;i+=2) {
+    x[i]+=a*(x[i-1]+x[i+1]);
+  }
+  x[0]+=2*a*x[1];
+
+  // Scale
+  a=1/1.149604398;
+  for (i=0;i<n;i++) {
+    if (i%2) x[i]*=a;
+    else x[i]/=a;
+  }
+
+  // Pack
+  if (tempbank==0) tempbank=(double *)malloc(n*sizeof(double));
+  for (i=0;i<n;i++) {
+    if (i%2==0) tempbank[i/2]=x[i];
+    else tempbank[n/2+i/2]=x[i];
+  }
+  for (i=0;i<n;i++) x[i]=tempbank[i];
+  free(tempbank);
+  tempbank = 0;
+}
+
+void iwt97(double* x,int n) {
+  double a;
+  int i;
+
+  // Unpack
+  if (tempbank==0) tempbank=(double *)malloc(n*sizeof(double));
+  for (i=0;i<n/2;i++) {
+    tempbank[i*2]=x[i];
+    tempbank[i*2+1]=x[i+n/2];
+  }
+  for (i=0;i<n;i++) x[i]=tempbank[i];
+
+  // Undo scale
+  a=1.149604398;
+  for (i=0;i<n;i++) {
+    if (i%2) x[i]*=a;
+    else x[i]/=a;
+  }
+
+  // Undo update 2
+  a=-0.4435068522;
+  for (i=2;i<n;i+=2) {
+    x[i]+=a*(x[i-1]+x[i+1]);
+  }
+  x[0]+=2*a*x[1];
+
+  // Undo predict 2
+  a=-0.8829110762;
+  for (i=1;i<n-2;i+=2) {
+    x[i]+=a*(x[i-1]+x[i+1]);
+  }
+  x[n-1]+=2*a*x[n-2];
+
+  // Undo update 1
+  a=0.05298011854;
+  for (i=2;i<n;i+=2) {
+    x[i]+=a*(x[i-1]+x[i+1]);
+  }
+  x[0]+=2*a*x[1];
+
+  // Undo predict 1
+  a=1.586134342;
+  for (i=1;i<n-2;i+=2) {
+    x[i]+=a*(x[i-1]+x[i+1]);
+  }
+  x[n-1]+=2*a*x[n-2];
+
+  free(tempbank);
+  tempbank = 0;
 }
 
 void compress(Mat_<double>& input, Mat_<double>& output, short blockSize)
