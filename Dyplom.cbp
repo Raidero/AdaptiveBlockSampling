@@ -32,6 +32,7 @@
 				<Compiler>
 					<Add option="-O2" />
 					<Add directory="C:/Users/Grzegorz/Desktop/Programy/opencv/opencvbuildcodeblocks/install/include" />
+					<Add directory="../opencv/opencvbuildcodeblocks/install/include" />
 				</Compiler>
 				<Linker>
 					<Add option="-s" />
@@ -100,7 +101,12 @@
 					<Add library="C:/Users/Grzegorz/Desktop/Programy/opencv/opencvbuildcodeblocks/lib/libopencv_videoio341.dll.a" />
 					<Add library="C:/Users/Grzegorz/Desktop/Programy/opencv/opencvbuildcodeblocks/lib/libopencv_videostab_pch_dephelp.a" />
 					<Add library="C:/Users/Grzegorz/Desktop/Programy/opencv/opencvbuildcodeblocks/lib/libopencv_videostab341.dll.a" />
+					<Add library="../opencv/opencvbuildcodeblocks/lib/libopencv_core341.dll.a" />
+					<Add library="../opencv/opencvbuildcodeblocks/lib/libopencv_highgui341.dll.a" />
+					<Add library="../opencv/opencvbuildcodeblocks/lib/libopencv_imgcodecs341.dll.a" />
+					<Add library="../opencv/opencvbuildcodeblocks/lib/libopencv_imgproc341.dll.a" />
 					<Add directory="C:/Users/Grzegorz/Desktop/Programy/opencv/opencvbuildcodeblocks/lib" />
+					<Add directory="../opencv/opencvbuildcodeblocks/lib" />
 				</Linker>
 			</Target>
 		</Build>
