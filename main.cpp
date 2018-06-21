@@ -16,12 +16,19 @@ void compressBlock(Mat& input, Mat& output, short blockSize, int iblock, int jbl
 void decompress(Mat& input, Mat& output, short blockSize);
 void decompressBlock(Mat& input, Mat& output, short blockSize, int iblock, int jblock);
 
-int LEVEL;
+
 void fwt97(double* x,int n);
 void iwt97(double* x,int n);
 void fwt(cv::Mat& src);
 void iwt(cv::Mat& src);
+void fwt97NoMove(double* x, int n);
+void normalize(cv::Mat& src, double h, double l);
+void energy(cv::Mat& src);
+void energyForBlocks(cv::Mat& src, int blockSize);
+double blockEnergy(cv::Mat& src, int offsetX, int offsetY, int rows, int cols, int size);
 
+int LEVEL;
+int BLOCK_SIZE;
 int main( int argc, char** argv )
 {
     Mat src;
@@ -34,18 +41,34 @@ int main( int argc, char** argv )
     {
         src = imread(argv[1], IMREAD_ANYCOLOR);
         LEVEL = atoi(argv[2]);
+        BLOCK_SIZE = atoi(argv[3]);
     }
     else
     {
         src = imread("test3.png", IMREAD_ANYCOLOR);
         LEVEL = 1;
+        BLOCK_SIZE = 32;
     }
     if( !src.data )
     {
         std::cerr << "File with given name does not exist\n";
         return -1;
     }
-
+    ////////// liczymy wspó³czynniki
+    double highPass[] = {0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0};
+    double lowPass[] =  {0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0};
+    double coefficentHighPass = 0;
+    double coefficentLowPass = 0;
+    fwt97NoMove(highPass, 16);
+    fwt97NoMove(lowPass, 16);
+    for(int i = 0; i < 16; ++i)
+    {
+        coefficentLowPass += lowPass[i]*lowPass[i];
+        coefficentHighPass += highPass[i]*highPass[i];
+    }
+    std::cout << coefficentHighPass << '\n';
+    std::cout << coefficentLowPass << '\n';
+    //////////
     src.convertTo(src, CV_64FC3);
     src = src/255.0;
 
@@ -55,6 +78,12 @@ int main( int argc, char** argv )
     {
     case 1:
         fwt(src);
+        imshow(window_name, src);
+        waitKey();
+
+        normalize(src, coefficentHighPass, coefficentLowPass);
+        energy(src);
+        energyForBlocks(src, BLOCK_SIZE);
         imshow(window_name, src);
         waitKey();
 
@@ -71,6 +100,8 @@ int main( int argc, char** argv )
 
         imshow(window_name, src);
         waitKey();
+
+
 
         split(src,bgr);
         iwt(bgr[0]);
@@ -121,6 +152,100 @@ int main( int argc, char** argv )
     return 0;
 }
 
+void normalize(cv::Mat& src, double h, double l)
+{
+    for(int level = 0; level < LEVEL; ++level)
+    {
+        for(int i = 0; i < (src.rows>>level); ++i)
+        {
+            for(int j = 0; j < (src.cols>>(level+1)); ++j)
+            {
+                src.at<double>(i,j) /= l;
+                src.at<double>(i,j + (src.cols>>(level+1))) /= h;
+            }
+        }
+        for(int i = 0; i < (src.rows>>(level+1)); ++i)
+        {
+            for(int j = 0; j < (src.cols>>level); ++j)
+            {
+                src.at<double>(i,j) /= l;
+                src.at<double>(i + (src.rows>>(level+1)),j) /= h;
+            }
+        }
+    }
+}
+
+void energy(cv::Mat& src)
+{
+    double sum = 0;
+    for(int i = 0; i < (src.rows>>LEVEL); ++i)
+    {
+        for(int j = 0; j < (src.cols>>LEVEL); ++j)
+        {
+            sum += src.at<double>(i,j)*src.at<double>(i,j);
+        }
+    }
+    std::cout << sum << '\n';
+    for(int level = LEVEL; level >= 1; --level)
+    {
+        int rows = src.rows>>level;
+        int cols = src.cols>>level;
+        for(int zone = 1; zone < 4; ++zone)
+        {
+            sum = 0;
+            int offsetX = (zone>>1)*rows;
+            int offsetY = zone%2*cols;
+            for(int i = 0; i < rows; ++i)
+                for(int j = 0; j < cols; ++j)
+                {
+                    sum += src.at<double>(i + offsetX,j + offsetY)*src.at<double>(i + offsetX,j + offsetY);
+                }
+            std::cout << sum << '\n';
+        }
+
+    }
+}
+
+void energyForBlocks(cv::Mat& src, int blockSize)
+{
+    for(int i = 0; i < (src.rows>>LEVEL); i += blockSize)
+    {
+        for(int j = 0; j < (src.cols>>LEVEL); j += blockSize)
+        {
+            std::cout << blockEnergy(src, i, j, (src.rows>>LEVEL), (src.cols>>LEVEL), blockSize) << '\n';
+        }
+    }
+    for(int level = LEVEL; level >= 1; --level)
+    {
+        int rows = src.rows>>level;
+        int cols = src.cols>>level;
+        for(int zone = 1; zone < 4; ++zone)
+        {
+            int offsetX = (zone>>1)*rows;
+            int offsetY = (zone%2)*cols;
+            for(int i = 0; i < rows; i += blockSize)
+                for(int j = 0; j < cols; j += blockSize)
+                {
+                    std::cout << blockEnergy(src, i + offsetX, j + offsetY, offsetX + rows, offsetY + cols, blockSize) << '\n';
+                }
+        }
+
+    }
+}
+
+double blockEnergy(cv::Mat& src, int offsetX, int offsetY, int rows, int cols, int size)
+{
+    double sum = 0;
+    for(int i = 0; i < size; ++i)
+    {
+        for(int j = 0; j < size; ++j)
+        {
+            if(i + offsetX < rows && j + offsetY < cols)
+                sum += src.at<double>(i + offsetX, j + offsetY)*src.at<double>(i + offsetX, j + offsetY);
+        }
+    }
+    return sum;
+}
 void fwt(cv::Mat& src)
 {
     double* data;
@@ -196,6 +321,48 @@ void iwt(cv::Mat& src)
 
 
 double *temp = NULL;
+
+void fwt97NoMove(double* x, int n)
+{
+    double a;
+
+    a = -1.586134342;
+    for(int i = 1; i < n - 2; i += 2)
+    {
+      x[i] += a * (x[i-1] + x[i+1]);
+    }
+    x[n-1] += 2 * a * x[n-2];
+
+    a=-0.05298011854;
+    for(int i = 2; i < n; i += 2)
+    {
+      x[i] += a * (x[i-1] + x[i+1]);
+    }
+    x[0] += 2 * a * x[1];
+
+    a=0.8829110762;
+    for(int i = 1; i < n - 2; i += 2)
+    {
+      x[i] += a * (x[i-1] + x[i+1]);
+    }
+    x[n-1] += 2 * a * x[n-2];
+
+    a=0.4435068522;
+    for(int i = 2; i < n; i += 2)
+    {
+      x[i] += a * (x[i-1] + x[i+1]);
+    }
+    x[0] += 2 * a * x[1];
+
+    a=1/1.149604398;
+    for(int i = 0; i < n; ++i)
+    {
+        if(i % 2 == 1)
+            x[i] *= a;
+        else
+            x[i] /= a;
+    }
+}
 
 void fwt97(double* x,int n) {
     double a;
